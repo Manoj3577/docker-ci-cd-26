@@ -1,0 +1,48 @@
+name: Docker CI/CD Pipeline
+
+on:
+  workflow_dispatch:
+    branches:
+      - main
+jobs:  
+  build-and-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout GitHub Repository
+        uses: actions/checkout@v6
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v4
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Build and Push Docker Image
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          push: true
+          tags: ${{ secrets.DOCKERHUB_USERNAME }}/docker-cicd-demo:latest
+
+      - name: Deploy Application on EC2
+        uses: appleboy/ssh-action@v1.2.2
+        env:
+          IMAGE_NAME: ${{ secrets.DOCKERHUB_USERNAME }}/docker-cicd-demo
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          envs: IMAGE_NAME
+          script: |
+            sudo docker pull "$IMAGE_NAME:latest"
+            sudo docker rm -f docker-cicd-demo || true
+            sudo docker run -d \
+              --name docker-cicd-demo \
+              --restart unless-stopped \
+              -p 80:80 \
+              "$IMAGE_NAME:latest"
+            sudo docker ps
